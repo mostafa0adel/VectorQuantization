@@ -1,0 +1,268 @@
+import javax.imageio.ImageIO;
+import java.awt.image.BufferedImage;
+import java.io.File;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Scanner;
+
+public class VectorQuantization {
+    public static int height, width, heightVector, widthVector, codeBookSize;
+    public static List<float[][]> imageVectors = new ArrayList<>();
+    public static List<float[][]> codeBooks = new ArrayList<>();
+    public static Map<float[][], List<float[][]>> nearestVectors = new java.util.HashMap<>();
+
+    public static float[][] readImage(String filename) {
+        BufferedImage img = null;
+        File f = null;
+        try {
+            f = new File(filename);
+            img = ImageIO.read(f);
+        } catch (IOException e) {
+            System.out.println(e);
+        }
+        height = img.getHeight();
+        width = img.getWidth();
+        float[][] pixels = new float[height][width];
+        for (int i = 0; i < height; i++) {
+            for (int j = 0; j < width; j++) {
+                int rgb = img.getRGB(j, i);
+                int r = (rgb >> 16) & 0xFF;
+                int g = (rgb >> 8) & 0xFF;
+                int b = (rgb) & 0xFF;
+                pixels[i][j] = (r + g + b) / 3.0f;
+            }
+        }
+        return pixels;
+    }
+
+    public static List<float[][]> divideImage(float[][] pixels) {
+        for (int i = 0; i < height; i += heightVector) {
+            for (int j = 0; j < width; j += widthVector) {
+                float[][] temp = new float[heightVector][widthVector];
+                for (int k = i; k < i + heightVector && k < height; k++) {
+                    for (int l = j; l < j + widthVector && l < width; l++) {
+                        temp[k - i][l - j] = pixels[k][l];
+                    }
+                    imageVectors.add(temp);
+                }
+            }
+        }
+        return imageVectors;
+    }
+
+    public static float[][] getAverageVector(List<float[][]> vectors) {
+        float[][] averageVector = new float[heightVector][widthVector];
+        for (int i = 0; i < vectors.size(); i++) {
+            for (int j = 0; j < heightVector; j++) {
+                for (int k = 0; k < widthVector; k++) {
+                    averageVector[j][k] += vectors.get(i)[j][k];
+                }
+            }
+        }
+        for (int i = 0; i < averageVector.length; i++) {
+            for (int j = 0; j < averageVector[i].length; j++) {
+                averageVector[i][j] /= vectors.size();
+            }
+        }
+        return averageVector;
+    }
+
+    public static List<float[][]> split(List<float[][]> codeBooks) {
+        List<float[][]> temp = new ArrayList<>();
+        for (int i = 0; i < codeBooks.size(); i++) {
+            float[][] temp1 = new float[heightVector][widthVector];
+            float[][] temp2 = new float[heightVector][widthVector];
+            for (int j = 0; j < heightVector; j++) {
+                for (int k = 0; k < widthVector; k++) {
+                    temp1[j][k] = codeBooks.get(i)[j][k] - 1;
+                    temp2[j][k] = codeBooks.get(i)[j][k] + 1;
+                }
+            }
+            temp.add(temp1);
+            temp.add(temp2);
+        }
+        codeBooks = temp;
+        return codeBooks;
+    }
+
+    public static void getNearestVectors() {
+        for (float[][] imageVector : imageVectors) {
+            float[][] temp = new float[heightVector][widthVector];
+            List<float[][]> vectors = new ArrayList<>();
+            temp = imageVector;
+            float min = 1000000000;
+            int inde = -1;
+            for (int j = 0; j < codeBooks.size(); j++) {
+                float[][] temp1 = new float[heightVector][widthVector];
+                temp1 = codeBooks.get(j);
+                float sum = 0;
+                for (int k = 0; k < heightVector; k++) {
+                    for (int l = 0; l < widthVector; l++) {
+                        sum += (float) Math.pow(temp[k][l] - temp1[k][l], 2);
+                    }
+                }
+                if (sum < min) {
+                    min = sum;
+                    inde = j;
+                }
+
+            }
+            vectors.add(temp);
+            if (nearestVectors.containsKey(codeBooks.get(inde))) {
+                vectors.addAll(nearestVectors.get(codeBooks.get(inde)));
+            }
+            nearestVectors.put(codeBooks.get(inde), vectors);
+        }
+    }
+
+    public static void Quantize() {
+        boolean flag = true;
+        while (codeBooks.size() < codeBookSize) {
+            System.out.println("First Iteration");
+            System.out.println("CodeBook Size " + codeBooks.size());
+            codeBooks.clear();
+            for (float[][] v : nearestVectors.keySet()) {
+                float[][] temp = new float[heightVector][widthVector];
+                temp = getAverageVector(nearestVectors.get(v));
+                codeBooks.add(temp);
+            }
+            codeBooks = split(codeBooks);
+            nearestVectors.clear();
+            getNearestVectors();
+        }
+//        while (flag) {
+//            List<float[][]> t = new ArrayList<>();
+//            flag = false;
+//            for (float[][] v : nearestVectors.keySet()) {
+//                float[][] temp = new float[heightVector][widthVector];
+//                temp = getAverageVector(nearestVectors.get(v));
+//                if (!codeBooks.contains(temp)) {
+//                    flag = true;
+//                    t.add(temp);
+//                } else {
+//                    t.add(v);
+//                }
+//            }
+//            System.out.println("Next Iteration");
+//            codeBooks.clear();
+//            codeBooks = t;
+//            nearestVectors.clear();
+//            getNearestVectors();
+//        }
+
+    }
+
+
+    public static void main(String[] args) {
+        Scanner sc = new Scanner(System.in);
+//            float[][] pixels = VectorQuantization.readImage("dog.jpg");
+
+        System.out.println("Enter the height of the vector");
+        heightVector = sc.nextInt();
+        System.out.println("Enter the width of the vector");
+        widthVector = sc.nextInt();
+        System.out.println("Enter the number of vectors");
+        codeBookSize = sc.nextInt();
+        float[][] temp = new float[heightVector][widthVector];
+        temp[0][0] = 1;
+        temp[0][1] = 2;
+        temp[1][0] = 3;
+        temp[1][1] = 4;
+        imageVectors.add(temp);
+        temp = new float[heightVector][widthVector];
+        temp[0][0] = 7;
+        temp[0][1] = 9;
+        temp[1][0] = 6;
+        temp[1][1] = 6;
+        imageVectors.add(temp);
+        temp = new float[heightVector][widthVector];
+        temp[0][0] = 4;
+        temp[0][1] = 11;
+        temp[1][0] = 12;
+        temp[1][1] = 12;
+        imageVectors.add(temp);
+        temp = new float[heightVector][widthVector];
+
+        temp[0][0] = 4;
+        temp[0][1] = 9;
+        temp[1][0] = 10;
+        temp[1][1] = 10;
+        imageVectors.add(temp);
+        temp = new float[heightVector][widthVector];
+
+        temp[0][0] = 15;
+        temp[0][1] = 14;
+        temp[1][0] = 20;
+        temp[1][1] = 18;
+        imageVectors.add(temp);
+        temp = new float[heightVector][widthVector];
+
+        temp[0][0] = 9;
+        temp[0][1] = 9;
+        temp[1][0] = 8;
+        temp[1][1] = 8;
+        imageVectors.add(temp);
+        temp = new float[heightVector][widthVector];
+
+        temp[0][0] = 4;
+        temp[0][1] = 3;
+        temp[1][0] = 4;
+        temp[1][1] = 5;
+        imageVectors.add(temp);
+        temp = new float[heightVector][widthVector];
+
+        temp[0][0] = 17;
+        temp[0][1] = 16;
+        temp[1][0] = 18;
+        temp[1][1] = 18;
+        imageVectors.add(temp);
+        temp = new float[heightVector][widthVector];
+        temp[0][0] = 1;
+        temp[0][1] = 4;
+        temp[1][0] = 5;
+        temp[1][1] = 6;
+        imageVectors.add(temp);
+        float[][] averageVector = getAverageVector(imageVectors);
+        codeBooks.add(averageVector);
+        codeBooks = split(codeBooks);
+        getNearestVectors();
+        System.out.println("CodeBook Size " + codeBooks.size());
+        Quantize();
+        System.out.println("CodeBook Size " + codeBooks.size());
+
+        for (float[][] v : nearestVectors.keySet()) {
+            System.out.println("CodeBook");
+            for (int i = 0; i < v.length; i++) {
+                for (int j = 0; j < v[i].length; j++) {
+                    System.out.print(v[i][j] + " ");
+                }
+                System.out.println();
+            }
+            System.out.println();
+            System.out.println("Vectors");
+            for (int i = 0; i < nearestVectors.get(v).size(); i++) {
+                for (int j = 0; j < nearestVectors.get(v).get(i).length; j++) {
+                    for (int k = 0; k < nearestVectors.get(v).get(i)[j].length; k++) {
+                        System.out.print(nearestVectors.get(v).get(i)[j][k] + " ");
+                    }
+                    System.out.println();
+                }
+                System.out.println();
+            }}
+        for (int i = 0; i < codeBooks.size(); i++) {
+            System.out.println("CodeBook " + i);
+            for (int j = 0; j < codeBooks.get(i).length; j++) {
+                for (int k = 0; k < codeBooks.get(i)[j].length; k++) {
+                    System.out.print(codeBooks.get(i)[j][k] + " ");
+                }
+                System.out.println();
+            }
+            System.out.println();
+        }
+
+    }
+
+
+}
